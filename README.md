@@ -59,6 +59,9 @@ val secretKey = key.secretKey
 val decrryptionParameters = key.decryptionParameters
 ```
 
+Note that no verification is done on the `RDEEnrollmentParameters` object.
+This is only implemented in the [RDE JS client](https://gitlab.surf.nl/filesender/rde-js-client).
+
 ## Acknowledgements
 A lot of the code in this library is based on the [JMRTD](https://jmrtd.org) library.
 The command encoding of the `AESAPDUEncoder` and parts of the `RDEDocument` class is based on work by Stephen Kellaway for the [RDW](https://www.rdw.nl/).
