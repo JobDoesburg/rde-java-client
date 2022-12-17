@@ -24,10 +24,16 @@ import java.util.logging.Logger
 import kotlin.experimental.and
 
 
-class RDEDocument(private val bacKey: BACKey) { // TODO add CAN support
+class RDEDocument// TODO maybe dont init from a CardService but from a Tag
+    (
+    private val bacKey: BACKey,
+    cardService: CardService,
+    maxTranceiveLength: Int = PassportService.NORMAL_MAX_TRANCEIVE_LENGTH,
+    maxBlockSize: Int = PassportService.DEFAULT_MAX_BLOCKSIZE
+) { // TODO add CAN support
     private val logger = Logger.getLogger(RDEDocument::class.java.name)
 
-    private lateinit var passportService: PassportService
+    private val passportService: PassportService
 
     private lateinit var paceKey: PACEKeySpec
     private lateinit var cardAccessFile: CardAccessFile
@@ -54,36 +60,35 @@ class RDEDocument(private val bacKey: BACKey) { // TODO add CAN support
     private lateinit var pcdPublicKey : PublicKey
     private lateinit var pcdPrivateKey : PrivateKey
 
-    fun init(cardService: CardService, maxTranceiveLength: Int = PassportService.NORMAL_MAX_TRANCEIVE_LENGTH, maxBlockSize: Int = PassportService.DEFAULT_MAX_BLOCKSIZE) {
+    init {
         if (maxBlockSize > PassportService.DEFAULT_MAX_BLOCKSIZE) {
             throw IllegalArgumentException("Max block size cannot be larger than ${PassportService.DEFAULT_MAX_BLOCKSIZE}")
         }
         if (maxTranceiveLength > PassportService.NORMAL_MAX_TRANCEIVE_LENGTH) {
             throw IllegalArgumentException("Max tranceive length cannot be larger than ${PassportService.NORMAL_MAX_TRANCEIVE_LENGTH}")
         }
-
         passportService = PassportService(
             cardService,
             maxTranceiveLength,
             maxBlockSize,
             true,
             true
-        ) // TODO maybe dont init from a CardService but from a Tag, and do this in the constructor
+        )
     }
 
     fun open() {
-        if(!::passportService.isInitialized) throw IllegalStateException("init() must be called before open()")
-
-        passportService.open()
-        readSecurityInfo()
-        if (paceInfo != null) {
-            doPACE()
-            if (paceSucceeded) {
+        if (!passportService.isOpen) {
+            passportService.open()
+            readSecurityInfo()
+            if (paceInfo != null) {
+                doPACE()
+                if (paceSucceeded) {
+                    selectApplet()
+                }
+            } else {
                 selectApplet()
+                doBAC()
             }
-        } else {
-            selectApplet()
-            doBAC()
         }
     }
 
@@ -287,9 +292,10 @@ class RDEDocument(private val bacKey: BACKey) { // TODO add CAN support
     }
 
     fun enroll(documentName : String, rdeDGId : Int, rdeRBLength : Int, withSecurityData: Boolean = true, withMRZData: Boolean = true, withFaceImage: Boolean = false) : RDEEnrollmentParameters {
-        if (!paceSucceeded && !bacSucceeded) throw IllegalStateException("PACE or BAC must be performed before CA")
         if (rdeDGId > 15 || rdeDGId < 1) throw IllegalArgumentException("rdeDGId must be between 1 and 15 (and must be a data group that is present on the passport that can be read without terminal authentication)")
         if (rdeRBLength > passportService.maxReadBinaryLength || rdeRBLength < 1) throw IllegalArgumentException("rdeRBLength must be between 1 and ${passportService.maxReadBinaryLength}")
+
+        if (!passportService.isOpen) this.open()
 
         readEFSOD() // needed for passive authentication, so always do this regardless of whether we're doing enrollment withSecurityData
         readDG14() // required to get security info for the CA session
@@ -340,8 +346,8 @@ class RDEDocument(private val bacKey: BACKey) { // TODO add CAN support
         )
     }
 
-    fun decrypt(parameters: RDEDecryptionParameters) : ByteArray {
-        if (!paceSucceeded && !bacSucceeded) throw IllegalStateException("PACE or BAC must be performed before CA")
+    fun retrieveSecretKey(decryptionParameters: RDEDecryptionParameters) : ByteArray {
+        if (!passportService.isOpen) this.open()
 
         readEFSOD()
 
@@ -351,10 +357,10 @@ class RDEDocument(private val bacKey: BACKey) { // TODO add CAN support
             logger.warning("Passive authentication failed, trying active authentication: $e")
         }
 
-        val publicKey = decodePublicKey(parameters.caOID, Hex.hexStringToBytes(parameters.pcdPublicKey))
-        doCustomCA(parameters.caOID, publicKey)
+        val publicKey = decodePublicKey(decryptionParameters.caOID, Hex.hexStringToBytes(decryptionParameters.pcdPublicKey))
+        doCustomCA(decryptionParameters.caOID, publicKey)
 
-        val protectedCommand = CommandAPDU(Hex.hexStringToBytes(parameters.protectedCommand))
+        val protectedCommand = CommandAPDU(Hex.hexStringToBytes(decryptionParameters.protectedCommand))
         logger.info("Sending protected command: $protectedCommand")
 
         val response = passportService.transmit(protectedCommand)

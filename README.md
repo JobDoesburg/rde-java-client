@@ -33,16 +33,16 @@ val withMRZData = true
 val withFaceImage = true
 
 document.open()
-val enrollmentParams = document.enroll(enrollmentDocumentName, rdeDgId, rdeDgRbLength, withSecurityData, withMRZData, withFaceImage)
+val enrollmentParams = document.enroll(documentName, rdeDgId, rdeDgRbLength, withSecurityData, withMRZData, withFaceImage)
 document.close()
 ```
 
 ### Retrieving secret keys
-To retrieve secret keys from an e-passport, call the `decrypt` method on the `RDEDocument` object, with the corresponding `DecryptionParameters` object.
+To retrieve secret keys from an e-passport, call the `retrieveSecretKey` method on the `RDEDocument` object, with the corresponding `DecryptionParameters` object.
 
 ```kotlin
 document.open()
-val secretKey = document.decrypt(decryptionParameters)
+val secretKey = document.retrieveSecretKey(decryptionParameters)
 document.close()
 ```
 
@@ -58,3 +58,7 @@ val key = keyGenerator.generateKey()
 val secretKey = key.secretKey
 val decrryptionParameters = key.decryptionParameters
 ```
+
+## Acknowledgements
+A lot of the code in this library is based on the [JMRTD](https://jmrtd.org) library.
+The command encoding of the `AESAPDUEncoder` and parts of the `RDEDocument` class is based on work by Stephen Kellaway for the [RDW](https://www.rdw.nl/).
