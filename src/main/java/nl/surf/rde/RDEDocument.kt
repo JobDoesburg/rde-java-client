@@ -75,7 +75,7 @@ class RDEDocument(
         )
     }
 
-    fun open() {
+    private fun open() {
         if (!passportService.isOpen) {
             passportService.open()
             readSecurityInfo()

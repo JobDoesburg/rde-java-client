@@ -67,6 +67,10 @@ class RDEKeyGenerator(var enrollmentParams: RDEEnrollmentParameters) {
         return protectedCommand.bytes
     }
 
+    override fun toString() : String {
+        return "RDEKeyGenerator(enrollmentParams=$enrollmentParams)"
+    }
+
     companion object {
         private fun paramsFromPublicKey(agreementAlg: String, publicKey: PublicKey) : AlgorithmParameterSpec {
             if ("DH" == agreementAlg) {
