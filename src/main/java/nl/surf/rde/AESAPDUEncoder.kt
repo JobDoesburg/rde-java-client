@@ -10,10 +10,10 @@ import javax.crypto.*
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
-/*
-* This implementation is ONLY for simulating the RB call for RDE. It is not a general implementation.
-* */
-class AESAPDUEncoder //PassportCrypto
+/**
+ * Taken from work by Stephen Kellaway
+ */
+class AESAPDUEncoder
     (ksEnc: ByteArray, ksMac: ByteArray?) {
     private val outputStream = ByteArrayOutputStream()
     private val cipher: Cipher
@@ -120,8 +120,7 @@ class AESAPDUEncoder //PassportCrypto
             2
         ) //0 when CA session started, first command is 1, first response is 2.
 
-        //TODO make private. Only public for tests.
-        fun getEncodedDo87Size(paddedDo87Length: Int): ByteArray {
+        private fun getEncodedDo87Size(paddedDo87Length: Int): ByteArray {
             val MIN_LONG_FORM_SIZE = 0x80
             val actualLength = paddedDo87Length + 1 //Cos of the 0x01 tag
             //Short form

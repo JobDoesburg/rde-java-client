@@ -24,8 +24,7 @@ import java.util.logging.Logger
 import kotlin.experimental.and
 
 
-class RDEDocument// TODO maybe dont init from a CardService but from a Tag
-    (
+class RDEDocument(
     private val bacKey: BACKey,
     cardService: CardService,
     maxTranceiveLength: Int = PassportService.NORMAL_MAX_TRANCEIVE_LENGTH,
@@ -281,7 +280,7 @@ class RDEDocument// TODO maybe dont init from a CardService but from a Tag
         val unwrappedResponse = passportService.wrapper.unwrap(rbResponse)
         logger.info("Received RB response: $rbResponse (unwrapped: $unwrappedResponse)")
 
-        val rbResponseData = getResponseData(unwrappedResponse,false)
+        val rbResponseData = unwrappedResponse.data
         if (rbResponseData.size != length) throw IllegalStateException("RB response data length mismatch. Expected $length, got ${rbResponseData.size}")
         return rbResponseData
     }
@@ -317,7 +316,7 @@ class RDEDocument// TODO maybe dont init from a CardService but from a Tag
 
         doCA(caInfo!!, caPublicKeyInfo!!)
 
-        // TODO technically, we don't need to do CA at all, but let's do it anyway for now so we are certain that CA is supported and our DG contents dont change after CA (which might be the case for certain data groups)
+        // technically, we don't need to do CA at all, we just need to know if it is supported. We do it anyway, so we are certain that CA is supported and our DG contents don't change after CA (which might be the case for certain data groups)
 
         val rbResponse = doRBCall(rdeDGId, rdeRBLength)
         val rdeDGContent = if (withSecurityData) { // If we include security data, we include the entire DG, because otherwise the dg hashes won't verify. Otherwise we just include the RB response that is shorter, because we don't need the full DG for simple RDE
@@ -375,77 +374,15 @@ class RDEDocument// TODO maybe dont init from a CardService but from a Tag
 
     companion object {
         fun readBinaryCommand(fid :  Int, length : Int) : CommandAPDU {
-            return getReadBinaryAPDU(fid, 0, length, true, false)
+            val sfiByte = 0x80 or (fid and 0xFF)
+            return CommandAPDU(
+                ISO7816.CLA_ISO7816.toInt(),
+                ISO7816.INS_READ_BINARY.toInt(),
+                sfiByte.toByte().toInt(),
+                0,
+                length
+            )
         }
-
-        // TODO this is copied from jmrtd, should be refactored to be made easier, or attribute to jmrtd
-        private fun getReadBinaryAPDU(
-            sfi: Int,
-            offset: Int,
-            length: Int,
-            isSFIEnabled: Boolean,
-            isTLVEncodedOffsetNeeded: Boolean
-        ): CommandAPDU {
-            var le = length
-            val offsetMSB = (offset and 0xFF00 shr 8).toByte()
-            val offsetLSB = (offset and 0xFF).toByte()
-            return if (isTLVEncodedOffsetNeeded) {
-                // In the case of long read 2 or 3 bytes less of the actual data will be returned,
-                // because a tag and length will be sent along, here we need to account for this.
-                if (le < 128) {
-                    le += 2
-                } else if (le < 256) {
-                    le += 3
-                }
-                if (le > 256) {
-                    le = 256
-                }
-                val data = byteArrayOf(0x54, 0x02, offsetMSB, offsetLSB)
-                CommandAPDU(
-                    ISO7816.CLA_ISO7816.toInt(),
-                    ISO7816.INS_READ_BINARY2.toInt(), 0, 0, data, le
-                )
-            } else if (isSFIEnabled) {
-                val sfiByte = 0x80 or (sfi and 0xFF)
-                return CommandAPDU(
-                    ISO7816.CLA_ISO7816.toInt(),
-                    ISO7816.INS_READ_BINARY.toInt(),
-                    sfiByte.toByte().toInt(),
-                    0,
-                    le
-                )
-            } else {
-                CommandAPDU(ISO7816.CLA_ISO7816.toInt(), ISO7816.INS_READ_BINARY.toInt(), offsetMSB.toInt(), offsetLSB.toInt(), le)
-            }
-        }
-
-        fun getResponseData(
-            responseAPDU: ResponseAPDU,
-            isTLVEncodedOffsetNeeded: Boolean
-        ): ByteArray {
-            var responseData = responseAPDU.data
-            if (!isTLVEncodedOffsetNeeded) {
-                return responseData
-            }
-
-            /*
-         * Strip the response off the tag 0x53 and the length field.
-         * FIXME: Use TLVUtil.tlvEncode(...) here. -- MO
-         */
-            val data = responseData
-            var index = 0
-            if (data[index++] != 0x53.toByte()) { // FIXME: Constant for 0x53.
-                throw CardServiceException("Malformed read binary long response data")
-            }
-            if ((data[index] and 0x80.toByte()) == 0x80.toByte()) {
-                index += data[index] and 0xF
-            }
-            index++
-            responseData = ByteArray(data.size - index)
-            System.arraycopy(data, index, responseData, 0, responseData.size)
-            return responseData
-        }
-
 
         fun encryptCommand(command : CommandAPDU,  oid: String, sharedSecret : ByteArray, maxTranceiveLength: Int) : CommandAPDU {
             val wrapper = EACCAProtocol.restartSecureMessaging(oid, sharedSecret, maxTranceiveLength, true)
@@ -468,8 +405,8 @@ class RDEDocument// TODO maybe dont init from a CardService but from a Tag
         }
 
         private fun readAllBytes(inputStream: InputStream): ByteArray? {
-            val buffer = ByteArray(4096) // TODO this should be a lot bigger (check ICAO spec)
-            ByteArrayOutputStream(4096).use { result ->
+            val buffer = ByteArray(32767) // According to the spec, the max length of an EF data group that can be normally read is 32767 bytes (see part 10 section 3.6.6). Normally, though, it will be way smaller (more like 2000 bytes)
+            ByteArrayOutputStream(32767).use { result ->
                 var bytesRead: Int
                 while (inputStream.read(buffer).also { bytesRead = it } != -1) {
                     result.write(buffer, 0, bytesRead)
